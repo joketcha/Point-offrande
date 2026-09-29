@@ -349,78 +349,124 @@ function idbOpen(){
     req.onerror = ()=>reject(req.error);
   });
 }
-async function idbSetHandle(handle){
+async function idbPut(key, value){
   try{
     const db = await idbOpen();
     const tx = db.transaction('handles','readwrite');
-    tx.objectStore('handles').put(handle, 'configFileHandle');
+    if(value) tx.objectStore('handles').put(value, key);
+    else tx.objectStore('handles').delete(key);
     return new Promise(res=>{ tx.oncomplete = res; tx.onerror = res; });
   }catch(e){ console.log("IndexedDB indisponible", e); }
 }
-async function idbGetHandle(){
+async function idbGet(key){
   try{
     const db = await idbOpen();
     const tx = db.transaction('handles','readonly');
     return new Promise(res=>{
-      const req = tx.objectStore('handles').get('configFileHandle');
+      const req = tx.objectStore('handles').get(key);
       req.onsuccess = ()=>res(req.result || null);
       req.onerror = ()=>res(null);
     });
   }catch(e){ return null; }
 }
+// Mémorise le fichier lié (et le dossier parent s'il a été lié via « Lier le dossier partagé ») :
+// la permission sur le dossier couvre config.json, c'est elle que le navigateur propose de conserver « à chaque visite ».
+async function idbSetHandle(handle, dirHandle){
+  await idbPut('configFileHandle', handle);
+  await idbPut('configDirHandle', dirHandle || null);
+  try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(e){} // évite que le navigateur purge le lien mémorisé
+}
+async function idbGetHandle(){ return idbGet('configFileHandle'); }
 
-// Au chargement de la page : si un fichier a déjà été lié précédemment, propose la reconnexion
+// Retourne le handle sur lequel porte la permission (dossier si connu, sinon fichier)
+async function storedPermissionTarget(){
+  return (await idbGet('configDirHandle')) || (await idbGetHandle());
+}
+async function loadConfigFromStoredHandle(){
+  const dirHandle = await idbGet('configDirHandle');
+  FILE_HANDLE = dirHandle
+    ? await dirHandle.getFileHandle('config.json', {create:false})
+    : await idbGetHandle();
+  const file = await FILE_HANDLE.getFile();
+  CONFIG = normalizeConfig(JSON.parse(await file.text()));
+  lastLoadedConfigSnapshot = snapshotOf(CONFIG);
+  cacheConfigLocally();
+  updateSyncStatusUI();
+  document.getElementById('loginReconnectBtn').style.display='none';
+  document.getElementById('loginBypassWrap').style.display='none';
+  disarmAutoReconnect();
+  applyLoadedLoginConfig(); // reprend aussi automatiquement la session déjà ouverte (bmcSession)
+}
+
+// Au chargement de la page : si un fichier a déjà été lié précédemment, reconnexion automatique
 async function checkStoredHandleOnLoad(){
-  const handle = await idbGetHandle();
-  if(!handle) return;
+  const target = await storedPermissionTarget();
+  if(!target) return;
   try{
-    const perm = await handle.queryPermission({mode:'readwrite'});
+    const perm = await target.queryPermission({mode:'readwrite'});
     if(perm === 'granted'){
-      FILE_HANDLE = handle;
-      const file = await FILE_HANDLE.getFile();
-      CONFIG = normalizeConfig(JSON.parse(await file.text()));
-      lastLoadedConfigSnapshot = snapshotOf(CONFIG);
-      cacheConfigLocally();
-      updateSyncStatusUI();
-      applyLoadedLoginConfig();
+      // Permission conservée par le navigateur (« Autoriser à chaque visite ») : aucune action requise
+      await loadConfigFromStoredHandle();
     } else {
-      // La permission doit être reconfirmée par un clic utilisateur (contrainte navigateur) :
-      // on bloque la connexion manuelle tant que le fichier partagé n'est pas reconnecté, pour éviter
-      // de démarrer par erreur en mode local et de perdre des données.
+      // Le navigateur exige un geste utilisateur pour redonner l'accès : on bloque la connexion manuelle
+      // (pour éviter de démarrer par erreur en mode local) et le PREMIER clic / touche sur la page
+      // relance la reconnexion, sans avoir à chercher le bouton.
       document.getElementById('loginReconnectBtn').style.display='block';
       document.getElementById('loginManualWrap').style.display='none';
       document.getElementById('loginUserSelectWrap').style.display='none';
       document.getElementById('loginBypassWrap').style.display='block';
-      document.getElementById('loginHint').textContent = "Un fichier partagé a déjà été lié sur ce poste. Cliquez sur « Reconnecter » pour reprendre la session partagée et éviter de perdre des données.";
+      document.getElementById('loginHint').innerHTML = "Un fichier partagé est lié sur ce poste : cliquez n'importe où pour le reconnecter.<br>Dans la fenêtre du navigateur, choisissez <b>« Autoriser à chaque visite »</b> : la reconnexion sera ensuite automatique à chaque ouverture du portail.";
+      armAutoReconnect();
     }
   }catch(e){ console.log("Reconnexion auto impossible", e); }
 }
+
+let autoReconnectArmed = false;
+function onFirstGestureReconnect(e){
+  // Ne pas intercepter les actions explicites : mode local, liaison d'un autre fichier/dossier
+  if(e.target && e.target.closest && e.target.closest('#loginBypassWrap, #loginLinkBtn, #loginLinkFileBtn')) return;
+  disarmAutoReconnect();
+  tryReconnectStoredHandle(true);
+}
+function armAutoReconnect(){
+  if(autoReconnectArmed) return;
+  autoReconnectArmed = true;
+  document.addEventListener('click', onFirstGestureReconnect, true);
+  document.addEventListener('keydown', onFirstGestureReconnect, true);
+}
+function disarmAutoReconnect(){
+  autoReconnectArmed = false;
+  document.removeEventListener('click', onFirstGestureReconnect, true);
+  document.removeEventListener('keydown', onFirstGestureReconnect, true);
+}
+
 function bypassReconnect(){
   if(!confirm("En mode local, vos modifications ne seront PAS partagées avec les autres utilisateurs et pourront être écrasées ou perdues au prochain lien avec le fichier partagé.\n\nContinuer quand même ?")) return;
+  disarmAutoReconnect();
   document.getElementById('loginReconnectBtn').style.display='none';
   document.getElementById('loginBypassWrap').style.display='none';
   document.getElementById('loginManualWrap').style.display='block';
   document.getElementById('loginHint').textContent = "Mode local actif : les modifications resteront uniquement sur cet appareil (navigateur) tant qu'aucun fichier partagé n'est lié.";
 }
+let reconnectInProgress = false;
 async function tryReconnectStoredHandle(fromClick){
-  const handle = await idbGetHandle();
-  if(!handle) return;
+  if(reconnectInProgress) return; // le clic sur le bouton déclenche aussi l'écouteur « premier clic »
+  reconnectInProgress = true;
   try{
-    const perm = await handle.requestPermission({mode:'readwrite'});
+    const target = await storedPermissionTarget();
+    if(!target) return;
+    let perm = await target.queryPermission({mode:'readwrite'});
+    if(perm !== 'granted') perm = await target.requestPermission({mode:'readwrite'});
     if(perm === 'granted'){
-      FILE_HANDLE = handle;
-      const file = await FILE_HANDLE.getFile();
-      CONFIG = normalizeConfig(JSON.parse(await file.text()));
-      lastLoadedConfigSnapshot = snapshotOf(CONFIG);
-      cacheConfigLocally();
-      updateSyncStatusUI();
-      document.getElementById('loginReconnectBtn').style.display='none';
-      document.getElementById('loginBypassWrap').style.display='none';
-      applyLoadedLoginConfig();
+      await loadConfigFromStoredHandle();
     } else if(fromClick){
-      alert("Autorisation refusée. Utilisez « Lier le dossier partagé » ou « Lier un fichier JSON précis » pour relier à nouveau.");
+      armAutoReconnect(); // nouvel essai possible au prochain clic
+      alert("Autorisation refusée. Cliquez à nouveau pour réessayer, ou utilisez « Lier le dossier partagé » / « Lier un fichier JSON précis ».");
     }
-  }catch(e){ console.log("Reconnexion impossible", e); }
+  }catch(e){
+    console.log("Reconnexion impossible", e);
+    if(fromClick) alert("Le fichier partagé lié précédemment est introuvable (déplacé, renommé ou dossier réseau inaccessible). Reliez-le avec « Lier le dossier partagé » ou « Lier un fichier JSON précis ».");
+  }finally{ reconnectInProgress = false; }
 }
 
 /* ---------- LOGIN ---------- */
@@ -442,7 +488,7 @@ async function linkFolderLogin(){
     }
     lastLoadedConfigSnapshot = snapshotOf(CONFIG);
     cacheConfigLocally();
-    await idbSetHandle(FILE_HANDLE);
+    await idbSetHandle(FILE_HANDLE, dirHandle);
     updateSyncStatusUI();
     applyLoadedLoginConfig();
   }catch(e){ console.log("Liaison annulée ou non supportée", e); }
@@ -489,6 +535,7 @@ function jsonFallbackImport(evt){
 }
 
 function applyLoadedLoginConfig(){
+  disarmAutoReconnect(); // fichier chargé : plus besoin de relancer la reconnexion au prochain clic
   if(!CONFIG.users) CONFIG.users = [];
   const actifs = CONFIG.users.filter(u=>u.actif);
   document.getElementById('loginLinkBtn').textContent = "🔗 Dossier partagé";
@@ -1009,7 +1056,7 @@ async function linkFolder(){
     }
     lastLoadedConfigSnapshot = snapshotOf(CONFIG);
     cacheConfigLocally();
-    await idbSetHandle(FILE_HANDLE);
+    await idbSetHandle(FILE_HANDLE, dirHandle);
     updateSyncStatusUI();
     alert("Dossier lié. Le fichier config.json sera utilisé pour la persistance partagée et sera reproposé automatiquement au prochain démarrage.");
     render();
