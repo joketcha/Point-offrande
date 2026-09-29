@@ -1,0 +1,1107 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Portail BMC — Bureau Méthodes Central</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --navy:#1F3864;
+    --navy-dark:#142544;
+    --navy-light:#2C4A7C;
+    --gold:#C5A028;
+    --gold-dark:#B8860B;
+    --paper:#F5F3ED;
+    --card:#FFFFFF;
+    --ink:#1C1C1C;
+    --ink-soft:#5B5F66;
+    --line:#E3DFD3;
+    --green:#2E7D32;
+    --amber:#C9922B;
+    --blue:#2563EB;
+    --red:#C0392B;
+    --radius:10px;
+    --shadow:0 2px 10px rgba(20,37,68,.08);
+    --font-display:Cambria, Georgia, 'Times New Roman', serif;
+    --font-body:'Segoe UI', Tahoma, sans-serif;
+    --font-mono:'Consolas','Courier New',monospace;
+  }
+  [data-theme="dark"]{
+    --navy:#16294A; --navy-dark:#0D1B33; --navy-light:#233F6B;
+    --paper:#12141A; --card:#1B1E27; --ink:#EDEDED; --ink-soft:#9AA0AC; --line:#2A2E3A;
+    --shadow:0 2px 14px rgba(0,0,0,.4);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:var(--font-body);background:var(--paper);color:var(--ink);}
+  ::selection{background:var(--gold);color:var(--navy-dark);}
+
+  /* ---------- LOGIN ---------- */
+  #loginScreen{position:fixed;inset:0;background:linear-gradient(160deg,var(--navy-dark),var(--navy) 60%,var(--navy-light));
+    display:flex;align-items:center;justify-content:center;z-index:999;}
+  .loginCard{background:var(--card);width:380px;padding:36px 34px;border-radius:var(--radius);box-shadow:0 20px 50px rgba(0,0,0,.35);
+    border-top:4px solid var(--gold);text-align:center;}
+  .loginCard .seal{width:64px;height:64px;margin:0 auto 14px;border-radius:50%;border:3px solid var(--gold);
+    display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;color:var(--navy);font-size:22px;}
+  .loginCard h1{font-family:var(--font-display);font-size:22px;color:var(--navy);margin:0 0 4px;}
+  .loginCard p.sub{color:var(--ink-soft);font-size:13px;margin:0 0 24px;letter-spacing:.03em;}
+  .loginCard input, .loginCard select{width:100%;padding:11px 12px;margin-bottom:14px;border:1px solid var(--line);
+    border-radius:6px;font-size:14px;background:var(--paper);color:var(--ink);}
+  .loginCard button{width:100%;padding:12px;background:var(--navy);color:#fff;border:none;border-radius:6px;
+    font-size:14px;font-weight:600;letter-spacing:.03em;cursor:pointer;transition:.15s;}
+  .loginCard button:hover{background:var(--gold-dark);}
+
+  /* ---------- SHELL ---------- */
+  #shell{display:none;min-height:100vh;}
+  #shell.active{display:flex;}
+
+  #sidebar{width:240px;background:var(--navy-dark);color:#EDEDED;flex-shrink:0;transition:width .2s;
+    display:flex;flex-direction:column;padding:18px 0;}
+  #sidebar.collapsed{width:64px;}
+  .brand{display:flex;align-items:center;gap:10px;padding:0 18px 20px;border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:14px;}
+  .brand .seal-sm{width:34px;height:34px;border-radius:50%;border:2px solid var(--gold);flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;color:var(--gold);font-size:13px;}
+  .brand-text{font-family:var(--font-display);font-size:16px;letter-spacing:.02em;white-space:nowrap;overflow:hidden;}
+  #sidebar.collapsed .brand-text, #sidebar.collapsed .navlabel{display:none;}
+  .navitem{display:flex;align-items:center;gap:12px;padding:11px 18px;cursor:pointer;color:#C9CEDA;
+    font-size:14px;border-left:3px solid transparent;transition:.15s;white-space:nowrap;}
+  .navitem:hover{background:rgba(255,255,255,.06);color:#fff;}
+  .navitem.active{background:rgba(197,160,40,.14);border-left-color:var(--gold);color:#fff;}
+  .navitem .ic{width:18px;text-align:center;flex-shrink:0;}
+  .navspacer{flex:1;}
+  .navfoot{padding:12px 18px;font-size:11px;color:#6C7488;white-space:nowrap;overflow:hidden;}
+
+  #main{flex:1;display:flex;flex-direction:column;min-width:0;}
+  #topbar{background:var(--navy);color:#fff;display:flex;align-items:center;gap:16px;padding:0 20px;height:60px;box-shadow:var(--shadow);z-index:5;}
+  #toggleSidebar{background:none;border:none;color:#fff;font-size:18px;cursor:pointer;padding:6px;}
+  #searchBox{flex:1;max-width:420px;display:flex;align-items:center;background:rgba(255,255,255,.12);border-radius:20px;padding:7px 14px;}
+  #searchBox input{background:none;border:none;color:#fff;outline:none;width:100%;font-size:13px;}
+  #searchBox input::placeholder{color:#C9CEDA;}
+  .topbar-right{margin-left:auto;display:flex;align-items:center;gap:18px;font-size:13px;}
+  .clock{font-family:var(--font-mono);color:#E6D9A8;}
+  .userchip{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);padding:6px 12px;border-radius:20px;}
+  .avatar{width:26px;height:26px;border-radius:50%;background:var(--gold);color:var(--navy-dark);display:flex;align-items:center;
+    justify-content:center;font-weight:700;font-size:12px;}
+  .iconbtn{background:none;border:none;color:#fff;font-size:16px;cursor:pointer;position:relative;padding:4px;}
+  .badge-dot{position:absolute;top:0;right:0;width:8px;height:8px;background:var(--red);border-radius:50%;border:1.5px solid var(--navy);}
+
+  #content{padding:24px 28px;flex:1;overflow-y:auto;}
+  .pagetitle{font-family:var(--font-display);font-size:24px;color:var(--navy);margin:0 0 4px;}
+  [data-theme="dark"] .pagetitle{color:#E6D9A8;}
+  .pagesub{color:var(--ink-soft);font-size:13px;margin:0 0 22px;}
+
+  /* ---------- DASHBOARD ---------- */
+  .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px;margin-bottom:26px;}
+  .kpi-gauge{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;text-align:center;border-bottom:3px solid var(--gold);}
+  .kpi-gauge svg{width:76px;height:76px;}
+  .kpi-num{font-family:var(--font-display);font-size:26px;color:var(--navy);}
+  [data-theme="dark"] .kpi-num{color:#E6D9A8;}
+  .kpi-label{font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin-top:2px;}
+
+  .dash-cols{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  .panel{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 20px;}
+  .panel h3{font-family:var(--font-display);font-size:15px;color:var(--navy);margin:0 0 12px;}
+  [data-theme="dark"] .panel h3{color:#E6D9A8;}
+  .row-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px;}
+  .row-item:last-child{border-bottom:none;}
+  .row-item .rank{width:20px;height:20px;border-radius:50%;background:var(--navy);color:#fff;font-size:10px;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+
+  /* ---------- CATALOGUE ---------- */
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;align-items:center;}
+  .chip{padding:6px 14px;border-radius:16px;border:1px solid var(--line);background:var(--card);font-size:12px;cursor:pointer;color:var(--ink-soft);}
+  .chip.active{background:var(--navy);color:#fff;border-color:var(--navy);}
+  select.filter{padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:12px;}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px;}
+  .card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;display:flex;flex-direction:column;
+    border-top:3px solid var(--gold);position:relative;}
+  .card .cardhead{display:flex;align-items:flex-start;gap:12px;}
+  .card .icon{width:44px;height:44px;border-radius:8px;background:var(--navy);color:var(--gold);display:flex;align-items:center;
+    justify-content:center;font-size:20px;flex-shrink:0;}
+  .card .name{font-family:var(--font-display);font-size:16px;color:var(--navy);margin:0;}
+  [data-theme="dark"] .card .name{color:#E6D9A8;}
+  .card .desc{font-size:12.5px;color:var(--ink-soft);margin:8px 0 10px;line-height:1.5;flex:1;}
+  .status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;}
+  .status-prod{background:var(--green);} .status-test{background:var(--amber);}
+  .status-dev{background:var(--blue);} .status-down{background:var(--red);}
+  .meta{font-size:11px;color:var(--ink-soft);display:flex;flex-wrap:wrap;gap:6px 12px;margin-bottom:12px;font-family:var(--font-mono);}
+  .cardfoot{display:flex;align-items:center;gap:8px;margin-top:auto;}
+  .btn-open{flex:1;background:var(--navy);color:#fff;border:none;border-radius:6px;padding:9px;font-size:13px;font-weight:600;cursor:pointer;}
+  .btn-open:hover{background:var(--gold-dark);}
+  .iconstar{background:none;border:none;font-size:16px;cursor:pointer;color:var(--ink-soft);}
+  .iconstar.fav{color:var(--gold-dark);}
+  .pin-tag{position:absolute;top:-8px;right:12px;background:var(--gold);color:var(--navy-dark);font-size:10px;
+    padding:2px 8px;border-radius:10px;font-weight:700;}
+
+  /* ---------- ADMIN ---------- */
+  table.admin{width:100%;border-collapse:collapse;background:var(--card);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);}
+  table.admin th{background:var(--navy);color:#fff;text-align:left;padding:10px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;}
+  table.admin td{padding:10px 12px;font-size:13px;border-bottom:1px solid var(--line);}
+  table.admin input, table.admin select{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:5px;background:var(--paper);color:var(--ink);font-size:12px;}
+  .mini-btn{padding:5px 10px;border-radius:5px;border:none;font-size:11px;cursor:pointer;margin-right:4px;}
+  .mini-btn.save{background:var(--green);color:#fff;}
+  .mini-btn.del{background:var(--red);color:#fff;}
+  .mini-btn.add{background:var(--navy);color:#fff;padding:9px 16px;font-size:13px;}
+
+  /* ---------- NOTIF DROPDOWN ---------- */
+  #notifPanel{position:absolute;top:56px;right:24px;width:320px;background:var(--card);border-radius:var(--radius);
+    box-shadow:0 8px 30px rgba(0,0,0,.25);display:none;z-index:20;color:var(--ink);overflow:hidden;}
+  #notifPanel.open{display:block;}
+  #notifPanel .nh{background:var(--navy);color:#fff;padding:12px 16px;font-size:13px;font-weight:600;}
+  .notif-item{padding:11px 16px;border-bottom:1px solid var(--line);font-size:12.5px;}
+  .notif-item .t{color:var(--ink-soft);font-size:10.5px;font-family:var(--font-mono);}
+
+  .empty{text-align:center;color:var(--ink-soft);padding:40px;font-size:13px;}
+  .syncbar{display:flex;gap:8px;margin-bottom:16px;font-size:12px;}
+  .syncbar button{padding:7px 12px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div class="loginCard">
+    <img id="logoSolibraLogin" src="" alt="SOLIBRA" style="width:72px;height:72px;object-fit:contain;margin:0 auto 14px;display:block;">
+    <h1>Portail BMC</h1>
+    <p class="sub">Bureau Méthodes Central — DI/DM</p>
+    <button type="button" id="loginLinkBtn" onclick="linkFolderLogin()" style="width:100%;padding:9px;margin-bottom:8px;background:var(--paper);color:var(--navy);border:1px solid var(--line);border-radius:6px;font-size:12px;cursor:pointer;">🔗 Lier le dossier partagé (config.json)</button>
+    <button type="button" id="loginLinkFileBtn" onclick="linkJsonFileLogin()" style="width:100%;padding:9px;margin-bottom:8px;background:var(--paper);color:var(--navy);border:1px solid var(--line);border-radius:6px;font-size:12px;cursor:pointer;">📄 Lier un fichier JSON précis</button>
+    <button type="button" id="loginReconnectBtn" onclick="tryReconnectStoredHandle(true)" style="display:none;width:100%;padding:9px;margin-bottom:8px;background:var(--gold);color:var(--navy-dark);border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">🔄 Reconnecter le fichier lié précédemment</button>
+    <div id="loginBypassWrap" style="display:none;margin-bottom:14px;">
+      <button type="button" onclick="bypassReconnect()" style="width:100%;padding:7px;background:none;color:var(--red);border:1px dashed var(--red);border-radius:6px;font-size:11px;cursor:pointer;">⚠ Continuer sans synchronisation (mode local, risque de perte de données)</button>
+    </div>
+    <input type="file" id="jsonFallbackInput" accept=".json" style="display:none" onchange="jsonFallbackImport(event)">
+
+    <div id="loginUserSelectWrap" style="display:none;">
+      <select id="loginUserSelect" onchange="onLoginUserChange()"></select>
+      <input id="loginPassword" type="password" placeholder="Mot de passe">
+      <div id="loginPasswordSetupWrap" style="display:none;">
+        <input id="loginNewPwd1" type="password" placeholder="Créez votre mot de passe">
+        <input id="loginNewPwd2" type="password" placeholder="Confirmez le mot de passe">
+      </div>
+    </div>
+
+    <div id="loginManualWrap">
+      <input id="loginName" type="text" placeholder="Identifiant (votre nom)">
+      <select id="loginProfile">
+        <option value="Administrateur">Administrateur</option>
+        <option value="BMC">BMC</option>
+        <option value="Maintenance">Maintenance</option>
+        <option value="Production">Production</option>
+        <option value="Magasin">Magasin</option>
+        <option value="Direction">Direction</option>
+      </select>
+      <input id="loginPasswordManual" type="password" placeholder="Mot de passe">
+    </div>
+    <button onclick="doLogin()">Entrer</button>
+    <p id="loginHint" style="font-size:11px;color:var(--ink-soft);margin-top:12px;line-height:1.5;">Sans liaison, la connexion se fait en mode local (démarrage). Une fois le dossier partagé lié, connectez-vous avec votre identifiant et votre mot de passe définis par l'administrateur.</p>
+  </div>
+</div>
+
+<!-- SHELL -->
+<div id="shell">
+  <div id="sidebar">
+    <div class="brand">
+      <img id="logoSolibraSidebar" src="" alt="SOLIBRA" style="width:36px;height:36px;object-fit:contain;flex-shrink:0;">
+      <div class="brand-text">Portail BMC</div>
+    </div>
+    <div class="navitem" id="navDashboard" data-page="dashboard" onclick="goPage('dashboard')" style="display:none;"><span class="ic">▦</span><span class="navlabel">Tableau de bord</span></div>
+    <div class="navitem" data-page="catalog" onclick="goPage('catalog')"><span class="ic">▤</span><span class="navlabel">Catalogue</span></div>
+    <div class="navitem" data-page="favorites" onclick="goPage('favorites')"><span class="ic">★</span><span class="navlabel">Favoris</span></div>
+    <div class="navitem" data-page="recent" onclick="goPage('recent')"><span class="ic">⟲</span><span class="navlabel">Récents</span></div>
+    <div class="navitem" id="navAdmin" data-page="admin" onclick="goPage('admin')" style="display:none;"><span class="ic">⚙</span><span class="navlabel">Administration</span></div>
+    <div class="navspacer"></div>
+    <div class="navfoot">Bureau Méthodes Central<br>DI/DM — Groupe Castel<br><span id="syncStatus" style="display:block;margin-top:6px;font-size:10px;">⚪ Mode local (non synchronisé)</span></div>
+  </div>
+
+  <div id="main">
+    <div id="topbar">
+      <button id="toggleSidebar" onclick="toggleSidebarFn()">☰</button>
+      <div id="searchBox"><span style="margin-right:8px;">⌕</span><input id="globalSearch" placeholder="Rechercher une application..." oninput="onGlobalSearch()"></div>
+      <div class="topbar-right">
+        <span class="clock" id="clock"></span>
+        <button class="iconbtn" onclick="toggleNotif()">🔔<span class="badge-dot" id="notifDot" style="display:none;"></span></button>
+        <button class="iconbtn" onclick="toggleDark()">◐</button>
+        <div class="userchip"><div class="avatar" id="avatarInit"></div><span id="userLabel"></span></div>
+        <button class="iconbtn" onclick="changerMotDePasse()" title="Changer mon mot de passe">🔑</button>
+        <button class="iconbtn" onclick="logout()" title="Déconnexion">⏻</button>
+      </div>
+    </div>
+
+    <div id="notifPanel">
+      <div class="nh">Notifications</div>
+      <div id="notifList"></div>
+    </div>
+
+    <div id="content"></div>
+  </div>
+</div>
+
+<script>
+const LOGO_SOLIBRA_B64 = "data:image/png;base64,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";
+/* =========================================================
+   PORTAIL BMC — v1
+   Persistance : File System Access API (fichier config.json)
+   Fallback : export/import manuel JSON
+   ========================================================= */
+
+let CONFIG = null;
+let FILE_HANDLE = null;
+let currentUser = { name:"", profile:"" };
+let clockInterval = null;
+let state = { page:"dashboard", search:"", catFilter:"Toutes", statusFilter:"Toutes" };
+const CONFIG_CACHE_KEY = 'bmcConfigCache';
+let lastLoadedConfigSnapshot = null; // état du CONFIG tel que lu la dernière fois depuis le fichier partagé (détection de conflit)
+function snapshotOf(cfg){ try{ return JSON.stringify(cfg); }catch(e){ return null; } }
+function cacheConfigLocally(){
+  try{ localStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify(CONFIG)); }
+  catch(e){ console.log("Cache local impossible", e); }
+}
+function loadCachedConfig(){
+  try{
+    const raw = localStorage.getItem(CONFIG_CACHE_KEY);
+    if(!raw) return null;
+    return normalizeConfig(JSON.parse(raw));
+  }catch(e){ return null; }
+}
+function updateSyncStatusUI(){
+  const el = document.getElementById('syncStatus');
+  if(!el) return;
+  el.textContent = FILE_HANDLE ? ("🟢 Lié : " + (FILE_HANDLE.name || 'config.json')) : "⚪ Mode local (non synchronisé)";
+}
+
+const STATUS_META = {
+  "Production":  {dot:"status-prod", label:"En production"},
+  "Test":        {dot:"status-test", label:"En test"},
+  "Développement":{dot:"status-dev", label:"En développement"},
+  "Hors service":{dot:"status-down", label:"Hors service"}
+};
+
+function defaultConfig(){
+  return {
+    apps: [
+      {id:"codif_modif", nom:"Codification & Modification Articles", desc:"Gestion des demandes de codification et de modification d'articles GMAO.", categorie:"Référentiel", statut:"Développement", version:"1.0", maj:"01/08/2026", responsable:"Ketcha KETCHA", type:"dossier", chemin:"APPLI_CODIF_MODIF\\index.html", icone:"🏷️", profils:["Administrateur","BMC"], epingle:false},
+      {id:"comptes_dimomaint", nom:"Suivi des Comptes DIMOMAINT", desc:"Suivi et administration des comptes utilisateurs DIMOMAINT.", categorie:"Administration", statut:"Développement", version:"1.0", maj:"04/08/2026", responsable:"Ketcha KETCHA", type:"dossier", chemin:"APPLI_COMPTES DIMOMAINT\\index.html", icone:"👤", profils:["Administrateur","BMC"], epingle:false},
+      {id:"ref_interne", nom:"Générateur de Référence Interne (GRI)", desc:"Génération et gestion des références internes articles, avec verrouillage optimiste et journal de connexion.", categorie:"Référentiel", statut:"Production", version:"2.0", maj:"04/08/2026", responsable:"Ketcha KETCHA", type:"dossier", chemin:"APPLI_REF_INTERNE\\index.html", icone:"🧩", profils:["Administrateur","BMC","Magasin"], epingle:true},
+      {id:"suivi_revisions", nom:"Suivi des Révisions", desc:"Suivi des révisions et versions des documents et procédures BMC.", categorie:"Suivi", statut:"Test", version:"1.0", maj:"03/08/2026", responsable:"Ketcha KETCHA", type:"dossier", chemin:"APPLI_SUIVI REVISIONS\\index.html", icone:"📋", profils:["Administrateur","BMC","Maintenance"], epingle:false},
+      {id:"dimo_mdm", nom:"DIMO MDM — Master Data Manager", desc:"Gestion des demandes de données de référence (Article/Organe/Équipement/ESM) destinées à l'import DIMOMAINT.", categorie:"Référentiel", statut:"Développement", version:"65", maj:"04/08/2026", responsable:"Ketcha KETCHA", type:"local", chemin:"DIMO_MDM_v65.html", icone:"🗂️", profils:["Administrateur","BMC"], epingle:true},
+      {id:"bmc_track", nom:"BMC Track — Suivi DA/DP", desc:"Suivi des demandes d'achat et demandes de prix, alertes de transmission multi-niveaux.", categorie:"Achats", statut:"Production", version:"89", maj:"04/08/2026", responsable:"Ketcha KETCHA", type:"local", chemin:"BMC_Track_v89.html", icone:"📦", profils:["Administrateur","BMC","Production"], epingle:true},
+      {id:"qualitrack", nom:"QualiTrack DIMOMAINT", desc:"Suivi des demandes de qualité de données, 16 catégories, SLA par catégorie.", categorie:"Qualité", statut:"Production", version:"1.0", maj:"04/08/2026", responsable:"Ketcha KETCHA", type:"local", chemin:"QualiTrack_DIMOMAINT.html", icone:"✅", profils:["Administrateur","BMC","Maintenance","Production"], epingle:false},
+      {id:"suivi_pdr", nom:"Suivi PDR — Révision 2026", desc:"Suivi des pièces de rechange, synchronisation JSON réseau, export PDF/Excel.", categorie:"Magasin", statut:"Production", version:"12", maj:"04/08/2026", responsable:"Ketcha KETCHA", type:"local", chemin:"Suivi_PDR_v12.html", icone:"🔧", profils:["Administrateur","BMC","Magasin"], epingle:false}
+    ],
+    users: [
+      {id:"u_ketcha", nom:"Ketcha KETCHA", profil:"Administrateur", actif:true, motDePasseHash:null}
+    ],
+    notifications: [
+      {titre:"Portail BMC v1 déployé", date:"04/08/2026", type:"nouveaute"},
+      {titre:"GRI passé en Production (v2.0)", date:"04/08/2026", type:"maj"},
+      {titre:"BMC Track v89 — nouvelles alertes de transmission", date:"04/08/2026", type:"maj"}
+    ],
+    favoris: {},
+    recents: {},
+    historique: []
+  };
+}
+
+/* ---------- NORMALISATION D'UN CONFIG CHARGÉ (compatibilité versions antérieures) ---------- */
+function normalizeConfig(cfg){
+  if(!cfg || typeof cfg !== 'object'){ return defaultConfig(); }
+  if(!Array.isArray(cfg.apps)) cfg.apps = [];
+  if(!Array.isArray(cfg.users)) cfg.users = [];
+  if(!Array.isArray(cfg.notifications)) cfg.notifications = [];
+  if(!cfg.favoris || typeof cfg.favoris !== 'object') cfg.favoris = {};
+  if(!cfg.recents || typeof cfg.recents !== 'object') cfg.recents = {};
+  if(!Array.isArray(cfg.historique)) cfg.historique = [];
+  cfg.apps.forEach(a=>{
+    if(a.epingle===undefined) a.epingle = false;
+    if(a.desc===undefined) a.desc = "";
+    if(!Array.isArray(a.profils)) a.profils = ["Administrateur"];
+    if(a.icone===undefined) a.icone = "📄";
+    if(a.categorie===undefined) a.categorie = "Divers";
+    if(a.statut===undefined) a.statut = "Développement";
+    if(a.version===undefined) a.version = "1.0";
+    if(a.maj===undefined) a.maj = "";
+    if(a.responsable===undefined) a.responsable = "";
+    if(a.type===undefined) a.type = "local";
+    if(a.chemin===undefined) a.chemin = "";
+  });
+  cfg.users.forEach(u=>{
+    if(u.motDePasseHash===undefined) u.motDePasseHash = null;
+    if(u.actif===undefined) u.actif = true;
+  });
+  return cfg;
+}
+
+/* ---------- SÉCURITÉ : hash de mot de passe ---------- */
+async function sha256Hex(texte){
+  const enc = new TextEncoder().encode(texte);
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+/* ---------- PERSISTANCE DU LIEN VERS LE FICHIER (IndexedDB) ---------- */
+function idbOpen(){
+  return new Promise((resolve,reject)=>{
+    const req = indexedDB.open('PortailBMC', 1);
+    req.onupgradeneeded = ()=>{ req.result.createObjectStore('handles'); };
+    req.onsuccess = ()=>resolve(req.result);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function idbSetHandle(handle){
+  try{
+    const db = await idbOpen();
+    const tx = db.transaction('handles','readwrite');
+    tx.objectStore('handles').put(handle, 'configFileHandle');
+    return new Promise(res=>{ tx.oncomplete = res; tx.onerror = res; });
+  }catch(e){ console.log("IndexedDB indisponible", e); }
+}
+async function idbGetHandle(){
+  try{
+    const db = await idbOpen();
+    const tx = db.transaction('handles','readonly');
+    return new Promise(res=>{
+      const req = tx.objectStore('handles').get('configFileHandle');
+      req.onsuccess = ()=>res(req.result || null);
+      req.onerror = ()=>res(null);
+    });
+  }catch(e){ return null; }
+}
+
+// Au chargement de la page : si un fichier a déjà été lié précédemment, propose la reconnexion
+async function checkStoredHandleOnLoad(){
+  const handle = await idbGetHandle();
+  if(!handle) return;
+  try{
+    const perm = await handle.queryPermission({mode:'readwrite'});
+    if(perm === 'granted'){
+      FILE_HANDLE = handle;
+      const file = await FILE_HANDLE.getFile();
+      CONFIG = normalizeConfig(JSON.parse(await file.text()));
+      lastLoadedConfigSnapshot = snapshotOf(CONFIG);
+      cacheConfigLocally();
+      updateSyncStatusUI();
+      applyLoadedLoginConfig();
+    } else {
+      // La permission doit être reconfirmée par un clic utilisateur (contrainte navigateur) :
+      // on bloque la connexion manuelle tant que le fichier partagé n'est pas reconnecté, pour éviter
+      // de démarrer par erreur en mode local et de perdre des données.
+      document.getElementById('loginReconnectBtn').style.display='block';
+      document.getElementById('loginManualWrap').style.display='none';
+      document.getElementById('loginUserSelectWrap').style.display='none';
+      document.getElementById('loginBypassWrap').style.display='block';
+      document.getElementById('loginHint').textContent = "Un fichier partagé a déjà été lié sur ce poste. Cliquez sur « Reconnecter » pour reprendre la session partagée et éviter de perdre des données.";
+    }
+  }catch(e){ console.log("Reconnexion auto impossible", e); }
+}
+function bypassReconnect(){
+  if(!confirm("En mode local, vos modifications ne seront PAS partagées avec les autres utilisateurs et pourront être écrasées ou perdues au prochain lien avec le fichier partagé.\n\nContinuer quand même ?")) return;
+  document.getElementById('loginReconnectBtn').style.display='none';
+  document.getElementById('loginBypassWrap').style.display='none';
+  document.getElementById('loginManualWrap').style.display='block';
+  document.getElementById('loginHint').textContent = "Mode local actif : les modifications resteront uniquement sur cet appareil (navigateur) tant qu'aucun fichier partagé n'est lié.";
+}
+async function tryReconnectStoredHandle(fromClick){
+  const handle = await idbGetHandle();
+  if(!handle) return;
+  try{
+    const perm = await handle.requestPermission({mode:'readwrite'});
+    if(perm === 'granted'){
+      FILE_HANDLE = handle;
+      const file = await FILE_HANDLE.getFile();
+      CONFIG = normalizeConfig(JSON.parse(await file.text()));
+      lastLoadedConfigSnapshot = snapshotOf(CONFIG);
+      cacheConfigLocally();
+      updateSyncStatusUI();
+      document.getElementById('loginReconnectBtn').style.display='none';
+      document.getElementById('loginBypassWrap').style.display='none';
+      applyLoadedLoginConfig();
+    } else if(fromClick){
+      alert("Autorisation refusée. Utilisez « Lier le dossier partagé » ou « Lier un fichier JSON précis » pour relier à nouveau.");
+    }
+  }catch(e){ console.log("Reconnexion impossible", e); }
+}
+
+/* ---------- LOGIN ---------- */
+let loginMode = "manual"; // "manual" | "registered"
+
+async function linkFolderLogin(){
+  try{
+    const dirHandle = await window.showDirectoryPicker();
+    try{
+      FILE_HANDLE = await dirHandle.getFileHandle('config.json', {create:false});
+      const file = await FILE_HANDLE.getFile();
+      CONFIG = normalizeConfig(JSON.parse(await file.text()));
+    }catch(e){
+      const creer = confirm("Aucun fichier config.json trouvé dans ce dossier.\n\nSi ce dossier est censé être le dossier réseau PARTAGÉ de l'équipe, vérifiez que vous avez sélectionné le bon dossier avant de continuer — sinon vous allez créer un portail vide et séparé de celui des autres utilisateurs.\n\nCréer un nouveau fichier config.json dans ce dossier ?");
+      if(!creer) return;
+      FILE_HANDLE = await dirHandle.getFileHandle('config.json', {create:true});
+      CONFIG = defaultConfig();
+      await writeConfigToHandle();
+    }
+    lastLoadedConfigSnapshot = snapshotOf(CONFIG);
+    cacheConfigLocally();
+    await idbSetHandle(FILE_HANDLE);
+    updateSyncStatusUI();
+    applyLoadedLoginConfig();
+  }catch(e){ console.log("Liaison annulée ou non supportée", e); }
+}
+
+async function linkJsonFileLogin(){
+  try{
+    if(window.showOpenFilePicker){
+      const [handle] = await window.showOpenFilePicker({
+        types: [{description:"Fichier JSON", accept:{"application/json":[".json"]}}],
+        multiple:false
+      });
+      FILE_HANDLE = handle;
+      const file = await FILE_HANDLE.getFile();
+      CONFIG = normalizeConfig(JSON.parse(await file.text()));
+      lastLoadedConfigSnapshot = snapshotOf(CONFIG);
+      cacheConfigLocally();
+      await idbSetHandle(FILE_HANDLE);
+      updateSyncStatusUI();
+      applyLoadedLoginConfig();
+    } else {
+      // Fallback navigateurs sans File System Access API : import en lecture seule
+      document.getElementById('jsonFallbackInput').click();
+    }
+  }catch(e){ console.log("Liaison annulée ou non supportée", e); }
+}
+
+function jsonFallbackImport(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try{
+      CONFIG = normalizeConfig(JSON.parse(e.target.result));
+      FILE_HANDLE = null; // navigateur sans File System Access API : pas d'écriture directe possible
+      lastLoadedConfigSnapshot = null;
+      cacheConfigLocally();
+      updateSyncStatusUI();
+      document.getElementById('loginLinkFileBtn').textContent = "🟡 JSON chargé (lecture seule)";
+      applyLoadedLoginConfig();
+    }catch(err){ alert("Fichier JSON invalide."); }
+  };
+  reader.readAsText(file);
+}
+
+function applyLoadedLoginConfig(){
+  if(!CONFIG.users) CONFIG.users = [];
+  const actifs = CONFIG.users.filter(u=>u.actif);
+  document.getElementById('loginLinkBtn').textContent = "🔗 Dossier partagé";
+  document.getElementById('loginLinkFileBtn').textContent = "🟢 Fichier JSON lié";
+  document.getElementById('loginReconnectBtn').style.display='none';
+  if(actifs.length){
+    loginMode = "registered";
+    document.getElementById('loginUserSelectWrap').style.display='block';
+    document.getElementById('loginManualWrap').style.display='none';
+    document.getElementById('loginHint').textContent = "Sélectionnez votre identifiant et saisissez votre mot de passe.";
+    const sel = document.getElementById('loginUserSelect');
+    sel.innerHTML = actifs.map(u=>`<option value="${u.id}">${u.nom} — ${u.profil}</option>`).join('');
+    onLoginUserChange();
+  } else {
+    document.getElementById('loginHint').textContent = "Fichier lié, mais aucun utilisateur enregistré. Connectez-vous manuellement pour créer le premier compte Administrateur, puis ajoutez les autres utilisateurs (avec mot de passe) depuis Administration.";
+  }
+  autoLoginFromSession(); // reprend automatiquement la session déjà ouverte, si elle existe
+}
+
+function onLoginUserChange(){
+  const sel = document.getElementById('loginUserSelect');
+  const u = CONFIG.users.find(x=>x.id===sel.value);
+  const aDejaUnMdp = !!(u && u.motDePasseHash);
+  document.getElementById('loginPassword').style.display = aDejaUnMdp ? 'block' : 'none';
+  document.getElementById('loginPasswordSetupWrap').style.display = aDejaUnMdp ? 'none' : 'block';
+  document.getElementById('loginHint').textContent = aDejaUnMdp
+    ? "Saisissez votre mot de passe."
+    : "Aucun mot de passe n'existe encore pour ce compte : créez-en un maintenant, il vous sera redemandé aux prochaines connexions.";
+}
+
+/* ---------- SESSION UNIQUE (rester connecté) ---------- */
+function saveSession(userId, name, profile){
+  try{ localStorage.setItem('bmcSession', JSON.stringify({userId: userId || null, name, profile, ts: Date.now()})); }
+  catch(e){ console.log("Session non mémorisée", e); }
+}
+function clearSession(){
+  try{ localStorage.removeItem('bmcSession'); }catch(e){}
+}
+function autoLoginFromSession(){
+  if(currentUser && currentUser.name) return; // déjà connecté dans cette page
+  let raw;
+  try{ raw = localStorage.getItem('bmcSession'); }catch(e){ return; }
+  if(!raw) return;
+  let session;
+  try{ session = JSON.parse(raw); }catch(e){ return; }
+  if(!session || !session.name) return;
+  if(session.userId){
+    if(!CONFIG || !CONFIG.users) return; // config pas encore chargée : on attend la liaison du fichier
+    const u = CONFIG.users.find(x=>x.id===session.userId && x.actif);
+    if(!u){ clearSession(); return; } // compte supprimé/désactivé depuis
+    enterShell(u.nom, u.profil, u.id);
+  } else {
+    enterShell(session.name, session.profile);
+  }
+}
+
+function enterShell(name, profile, userId){
+  currentUser = { name, profile, userId: userId || null };
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('shell').classList.add('active');
+  document.getElementById('avatarInit').textContent = name.substring(0,2).toUpperCase();
+  document.getElementById('userLabel').textContent = name + " · " + profile;
+  document.getElementById('navAdmin').style.display = profile === "Administrateur" ? 'flex' : 'none';
+  document.getElementById('navDashboard').style.display = profile === "Administrateur" ? 'flex' : 'none';
+  updateSyncStatusUI();
+  renderNotifs();
+  goPage(profile === "Administrateur" ? 'dashboard' : 'catalog');
+  clearInterval(clockInterval);
+  tickClock(); clockInterval = setInterval(tickClock,1000);
+}
+
+async function doLogin(){
+  if(!CONFIG){ CONFIG = loadCachedConfig() || defaultConfig(); }
+  let name, profile, userId = null;
+  if(loginMode === "registered"){
+    const sel = document.getElementById('loginUserSelect');
+    const u = CONFIG.users.find(x=>x.id===sel.value);
+    if(!u){ alert("Compte introuvable."); return; }
+    if(u.motDePasseHash){
+      const saisi = document.getElementById('loginPassword').value;
+      if(!saisi){ alert("Merci de saisir votre mot de passe."); return; }
+      const hash = await sha256Hex(saisi);
+      if(hash !== u.motDePasseHash){ alert("Mot de passe incorrect."); return; }
+    } else {
+      const p1 = document.getElementById('loginNewPwd1').value;
+      const p2 = document.getElementById('loginNewPwd2').value;
+      if(!p1 || p1.length < 4){ alert("Choisissez un mot de passe d'au moins 4 caractères."); return; }
+      if(p1 !== p2){ alert("Les deux mots de passe saisis ne correspondent pas."); return; }
+      u.motDePasseHash = await sha256Hex(p1);
+      saveConfigSilently();
+    }
+    name = u.nom; profile = u.profil; userId = u.id;
+  } else {
+    name = document.getElementById('loginName').value.trim();
+    profile = document.getElementById('loginProfile').value;
+    const pwd = document.getElementById('loginPasswordManual').value;
+    if(!name){ alert("Merci de saisir votre identifiant."); return; }
+    if(!pwd){ alert("Merci de saisir un mot de passe."); return; }
+  }
+  saveSession(userId, name, profile);
+  enterShell(name, profile, userId);
+}
+
+async function changerMotDePasse(){
+  if(!currentUser.userId){
+    alert("Le changement de mot de passe n'est possible que pour un compte enregistré (connexion via un fichier lié). En mode local, il n'y a rien à mettre à jour.");
+    return;
+  }
+  const u = CONFIG.users.find(x=>x.id===currentUser.userId);
+  if(!u){ alert("Compte introuvable."); return; }
+  if(u.motDePasseHash){
+    const actuel = prompt("Mot de passe actuel :");
+    if(actuel === null) return;
+    const hashActuel = await sha256Hex(actuel);
+    if(hashActuel !== u.motDePasseHash){ alert("Mot de passe actuel incorrect."); return; }
+  }
+  const nouveau = prompt("Nouveau mot de passe (4 caractères minimum) :");
+  if(nouveau === null) return;
+  if(!nouveau || nouveau.length < 4){ alert("Mot de passe trop court."); return; }
+  const confirme = prompt("Confirmez le nouveau mot de passe :");
+  if(nouveau !== confirme){ alert("Les deux mots de passe ne correspondent pas."); return; }
+  u.motDePasseHash = await sha256Hex(nouveau);
+  saveConfigSilently();
+  alert("Mot de passe mis à jour avec succès.");
+}
+
+function logout(){
+  clearInterval(clockInterval);
+  clearSession();
+  currentUser = { name:"", profile:"" };
+  state = { page:"dashboard", search:"", catFilter:"Toutes", statusFilter:"Toutes" };
+  document.getElementById('navAdmin').style.display='none';
+  document.getElementById('navDashboard').style.display='none';
+  document.getElementById('notifPanel').classList.remove('open');
+  document.getElementById('globalSearch').value='';
+  document.getElementById('shell').classList.remove('active');
+  document.getElementById('loginScreen').style.display='flex';
+  document.getElementById('loginName').value='';
+  document.getElementById('loginPasswordManual').value='';
+  const pwdField = document.getElementById('loginPassword'); if(pwdField) pwdField.value='';
+  const p1 = document.getElementById('loginNewPwd1'); if(p1) p1.value='';
+  const p2 = document.getElementById('loginNewPwd2'); if(p2) p2.value='';
+  // si un compte enregistré existe déjà, on repropose directement la liste
+  if(loginMode !== "registered"){
+    document.getElementById('loginManualWrap').style.display='block';
+    document.getElementById('loginUserSelectWrap').style.display='none';
+  }
+}
+
+function tickClock(){
+  const d = new Date();
+  document.getElementById('clock').textContent = d.toLocaleDateString('fr-FR') + " · " + d.toLocaleTimeString('fr-FR');
+}
+
+/* ---------- SIDEBAR / THEME ---------- */
+function toggleSidebarFn(){ document.getElementById('sidebar').classList.toggle('collapsed'); }
+function toggleDark(){
+  const html = document.documentElement;
+  html.setAttribute('data-theme', html.getAttribute('data-theme')==='dark' ? 'light' : 'dark');
+}
+function toggleNotif(){ document.getElementById('notifPanel').classList.toggle('open'); }
+
+/* ---------- NAVIGATION ---------- */
+function goPage(page){
+  state.page = page;
+  document.querySelectorAll('.navitem').forEach(n=>n.classList.toggle('active', n.dataset.page===page));
+  render();
+}
+function onGlobalSearch(){
+  state.search = document.getElementById('globalSearch').value.toLowerCase();
+  if(state.page !== 'catalog') goPage('catalog'); else render();
+}
+
+/* ---------- VISIBLE APPS FOR PROFILE ---------- */
+function visibleApps(){
+  return CONFIG.apps.filter(a => currentUser.profile==="Administrateur" || a.profils.includes(currentUser.profile));
+}
+
+/* ---------- RENDER ROUTER ---------- */
+function render(){
+  try{
+    renderInner();
+  }catch(e){
+    console.error("Erreur d'affichage :", e);
+    document.getElementById('content').innerHTML =
+      '<div class="empty">Une erreur est survenue lors de l\'affichage de cette page.<br>Détail technique : ' +
+      String(e.message || e).replace(/</g,'&lt;') + '<br><br>Essayez de recharger la page ou de relier à nouveau le fichier de configuration.</div>';
+  }
+}
+function renderInner(){
+  const c = document.getElementById('content');
+  if(state.page==='dashboard' && currentUser.profile!=="Administrateur"){ state.page='catalog'; }
+  if(state.page==='admin' && currentUser.profile!=="Administrateur"){ state.page='catalog'; }
+  if(state.page==='dashboard') return renderDashboard(c);
+  if(state.page==='catalog') return renderCatalog(c, visibleApps());
+  if(state.page==='favorites') return renderCatalog(c, visibleApps().filter(a=>CONFIG.favoris[a.id]), "Favoris");
+  if(state.page==='recent') return renderCatalog(c, visibleApps().filter(a=>CONFIG.recents[a.id]).sort((a,b)=>CONFIG.recents[b.id]-CONFIG.recents[a.id]), "Récemment ouvertes");
+  if(state.page==='admin') return renderAdmin(c);
+}
+
+/* ---------- DASHBOARD ---------- */
+function gauge(pct, color){
+  const r=32, c=2*Math.PI*r, off = c - (pct/100)*c;
+  return `<svg viewBox="0 0 76 76"><circle cx="38" cy="38" r="${r}" fill="none" stroke="var(--line)" stroke-width="7"/>
+  <circle cx="38" cy="38" r="${r}" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round"
+  stroke-dasharray="${c}" stroke-dashoffset="${off}" transform="rotate(-90 38 38)"/></svg>`;
+}
+function renderDashboard(c){
+  const apps = visibleApps();
+  const total = apps.length;
+  const byStatus = s => apps.filter(a=>a.statut===s).length;
+  const prod=byStatus("Production"), test=byStatus("Test"), dev=byStatus("Développement"), down=byStatus("Hors service");
+  const mostUsed = Object.entries(CONFIG.recents).sort((a,b)=>b[1]-a[1]).slice(0,5)
+      .map(([id])=>apps.find(a=>a.id===id)).filter(Boolean);
+  c.innerHTML = `
+    <h2 class="pagetitle">Tableau de bord</h2>
+    <p class="pagesub">Bienvenue ${currentUser.name} — profil ${currentUser.profile}</p>
+    <div class="kpi-row">
+      <div class="kpi-gauge">${gauge(100,'var(--navy)')}<div class="kpi-num">${total}</div><div class="kpi-label">Total apps</div></div>
+      <div class="kpi-gauge">${gauge(total?prod/total*100:0,'var(--green)')}<div class="kpi-num">${prod}</div><div class="kpi-label">En production</div></div>
+      <div class="kpi-gauge">${gauge(total?dev/total*100:0,'var(--blue)')}<div class="kpi-num">${dev}</div><div class="kpi-label">En développement</div></div>
+      <div class="kpi-gauge">${gauge(total?test/total*100:0,'var(--amber)')}<div class="kpi-num">${test}</div><div class="kpi-label">En test</div></div>
+      <div class="kpi-gauge">${gauge(total?down/total*100:0,'var(--red)')}<div class="kpi-num">${down}</div><div class="kpi-label">Hors service</div></div>
+    </div>
+    <div class="dash-cols">
+      <div class="panel"><h3>Applications les plus utilisées</h3>
+        ${mostUsed.length? mostUsed.map((a,i)=>`<div class="row-item"><span class="rank">${i+1}</span>${a.icone} ${a.nom}</div>`).join('') : '<div class="empty">Aucune utilisation enregistree pour le moment.</div>'}
+      </div>
+      <div class="panel"><h3>Dernières notifications</h3>
+        ${CONFIG.notifications.slice(0,5).map(n=>`<div class="row-item">🔔 <span>${n.titre}<br><span style="color:var(--ink-soft);font-size:11px;">${n.date}</span></span></div>`).join('')}
+      </div>
+    </div>`;
+}
+
+/* ---------- CATALOGUE ---------- */
+function renderCatalog(c, apps, titleOverride){
+  let filtered = apps.filter(a=>{
+    const matchSearch = !state.search || a.nom.toLowerCase().includes(state.search) || a.desc.toLowerCase().includes(state.search);
+    const matchCat = state.catFilter==="Toutes" || a.categorie===state.catFilter;
+    const matchStatus = state.statusFilter==="Toutes" || a.statut===state.statusFilter;
+    return matchSearch && matchCat && matchStatus;
+  });
+  filtered.sort((a,b)=> (b.epingle - a.epingle) || a.nom.localeCompare(b.nom));
+  const cats = ["Toutes", ...new Set(CONFIG.apps.map(a=>a.categorie))];
+  const statuses = ["Toutes","Production","Test","Développement","Hors service"];
+  c.innerHTML = `
+    <h2 class="pagetitle">${titleOverride || "Catalogue des applications"}</h2>
+    <p class="pagesub">${filtered.length} application(s)</p>
+    <div class="toolbar">
+      <select class="filter" onchange="state.catFilter=this.value;render()">${cats.map(cat=>`<option ${cat===state.catFilter?'selected':''}>${cat}</option>`).join('')}</select>
+      <select class="filter" onchange="state.statusFilter=this.value;render()">${statuses.map(s=>`<option ${s===state.statusFilter?'selected':''}>${s}</option>`).join('')}</select>
+    </div>
+    <div class="grid" id="grid"></div>`;
+  const grid = document.getElementById('grid');
+  if(filtered.length===0){ grid.innerHTML = '<div class="empty">Aucune application ne correspond à ces critères.</div>'; return; }
+  grid.innerHTML = filtered.map(a=>{
+    const meta = STATUS_META[a.statut];
+    const isFav = !!CONFIG.favoris[a.id];
+    return `<div class="card">
+      ${a.epingle? '<div class="pin-tag">ÉPINGLÉ</div>' : ''}
+      <div class="cardhead">
+        <div class="icon">${a.icone}</div>
+        <div style="flex:1;">
+          <p class="name">${a.nom}</p>
+          <div><span class="status-dot ${meta.dot}"></span><span style="font-size:11px;color:var(--ink-soft);">${meta.label}</span></div>
+        </div>
+        <button class="iconstar ${isFav?'fav':''}" onclick="toggleFav('${a.id}')">${isFav?'★':'☆'}</button>
+      </div>
+      <div class="desc">${a.desc}</div>
+      <div class="meta"><span>v${a.version}</span><span>MAJ ${a.maj}</span><span>${a.responsable}</span></div>
+      <div class="cardfoot"><button class="btn-open" onclick="openApp('${a.id}')">Ouvrir</button></div>
+    </div>`;
+  }).join('');
+}
+
+function toggleFav(id){
+  if(CONFIG.favoris[id]) delete CONFIG.favoris[id]; else CONFIG.favoris[id]=true;
+  render(); saveConfigSilently();
+}
+
+function normalizePath(chemin){
+  // Un chemin copié depuis l'Explorateur Windows utilise des antislashs (\), invalides
+  // dans une URL de navigateur : c'était la cause principale des échecs d'ouverture.
+  return String(chemin || '').trim().replace(/\\/g, '/');
+}
+function openApp(id){
+  const a = CONFIG.apps.find(x=>x.id===id);
+  if(!a) return;
+  if(!a.chemin || !a.chemin.trim()){
+    alert("Aucun chemin/URL n'est défini pour « " + a.nom + " ». Complétez le champ « Chemin/URL » depuis Administration.");
+    return;
+  }
+  CONFIG.recents[id] = Date.now();
+  CONFIG.historique.push({id, nom:a.nom, utilisateur:currentUser.name, date:new Date().toISOString()});
+  saveConfigSilently();
+  if(a.type==="exe"){
+    alert("Exécutable local détecté :\n" + a.chemin + "\n\nLe navigateur ne peut pas lancer un .exe directement.\nChemin copié dans le presse-papiers si disponible.");
+    if(navigator.clipboard) navigator.clipboard.writeText(a.chemin).catch(()=>{});
+  } else {
+    // web : l'URL est déjà correcte telle quelle. dossier/local : on corrige les antislashs Windows.
+    const cible = a.type==="web" ? a.chemin.trim() : normalizePath(a.chemin);
+    const fenetre = window.open(cible, '_blank');
+    if(!fenetre){
+      alert("L'ouverture de « " + a.nom + " » a échoué.\n\nCauses possibles :\n• bloqueur de pop-up du navigateur (autorisez les pop-up pour ce site) ;\n• chemin incorrect ou fichier introuvable : " + cible + "\n\nVérifiez le champ « Chemin/URL » depuis Administration.");
+    }
+  }
+  if(state.page==='dashboard' || state.page==='recent') render();
+}
+
+/* ---------- ADMIN ---------- */
+function renderAdmin(c){
+  if(currentUser.profile !== "Administrateur"){
+    c.innerHTML = '<div class="empty">Accès réservé au profil Administrateur.</div>'; return;
+  }
+  const profils = ["Administrateur","BMC","Maintenance","Production","Magasin","Direction"];
+  c.innerHTML = `
+    <h2 class="pagetitle">Administration</h2>
+    <p class="pagesub">Ajouter, modifier ou supprimer des applications du catalogue</p>
+    <div class="syncbar">
+      <button onclick="linkFolder()">🔗 Lier un dossier réseau (config.json)</button>
+      <button onclick="linkJsonFile()">📄 Lier un fichier JSON précis</button>
+      <button onclick="exportConfig()">⬇ Exporter le JSON</button>
+      <button onclick="document.getElementById('importFile').click()">⬆ Importer un JSON</button>
+      <input type="file" id="importFile" accept=".json" style="display:none" onchange="importConfig(event)">
+      <span style="align-self:center;color:var(--ink-soft);">${FILE_HANDLE? '🟢 Fichier lié' : '⚪ Non lié (mode local)'}</span>
+    </div>
+    <table class="admin" id="adminTable">
+      <thead><tr><th>Icône</th><th>Nom</th><th>Description</th><th>Catégorie</th><th>Statut</th><th>Version</th><th>MAJ</th><th>Responsable</th><th>Type</th><th>Chemin/URL<br><span style="font-weight:400;text-transform:none;font-size:9px;">avec / (pas de \)</span></th><th>Profils</th><th>Épinglé</th><th>Actions</th></tr></thead>
+      <tbody>${CONFIG.apps.map(a=>adminRow(a)).join('')}</tbody>
+    </table>
+    <div style="margin-top:16px;margin-bottom:36px;"><button class="mini-btn add" onclick="addApp()">+ Ajouter une application</button></div>
+
+    <h2 class="pagetitle" style="font-size:20px;">Utilisateurs</h2>
+    <p class="pagesub">Comptes autorisés à se connecter au portail et leur profil d'accès</p>
+    <div class="syncbar">
+      <button onclick="telechargerModeleUtilisateurs()">⬇ Télécharger le modèle Excel</button>
+      <button onclick="document.getElementById('importUsersFile').click()">⬆ Importer des utilisateurs (Excel)</button>
+      <input type="file" id="importUsersFile" accept=".xlsx,.xls" style="display:none" onchange="importUsersExcel(event)">
+      <span style="align-self:center;color:var(--ink-soft);">Colonnes attendues : <b>Nom</b>, <b>Profil</b> (Administrateur/BMC/Maintenance/Production/Magasin/Direction), <b>Actif</b> (Oui/Non, optionnel)</span>
+    </div>
+    <table class="admin" id="usersTable">
+      <thead><tr><th>Nom (identifiant)</th><th>Profil</th><th>Mot de passe</th><th>Actif</th><th>Actions</th></tr></thead>
+      <tbody>${(CONFIG.users||[]).map(u=>userRow(u)).join('')}</tbody>
+    </table>
+    <div style="margin-top:16px;"><button class="mini-btn add" onclick="addUser()">+ Ajouter un utilisateur</button></div>
+  `;
+}
+function userRow(u){
+  const profils = ["Administrateur","BMC","Maintenance","Production","Magasin","Direction"];
+  return `<tr data-uid="${u.id}">
+    <td><input value="${u.nom}" data-uf="nom"></td>
+    <td><select data-uf="profil">${profils.map(p=>`<option ${p===u.profil?'selected':''}>${p}</option>`).join('')}</select></td>
+    <td><input type="password" data-uf="motdepasse" placeholder="${u.motDePasseHash? 'Laisser vide pour ne pas changer' : '⚠ Aucun mot de passe défini'}"></td>
+    <td style="text-align:center;"><input type="checkbox" data-uf="actif" ${u.actif?'checked':''}></td>
+    <td><button class="mini-btn save" onclick="saveUserRow('${u.id}')">Enr.</button><button class="mini-btn del" onclick="deleteUser('${u.id}')">Suppr.</button>${u.motDePasseHash? `<button class="mini-btn" style="background:var(--amber);color:#fff;" onclick="resetUserPassword('${u.id}')">Réinit. mdp</button>` : ''}</td>
+  </tr>`;
+}
+function resetUserPassword(id){
+  if(!confirm("Réinitialiser le mot de passe de cet utilisateur ? Il devra en créer un nouveau à sa prochaine connexion.")) return;
+  const u = CONFIG.users.find(x=>x.id===id);
+  u.motDePasseHash = null;
+  saveConfigSilently(); render();
+}
+async function saveUserRow(id){
+  const tr = document.querySelector(`tr[data-uid="${id}"]`);
+  const u = CONFIG.users.find(x=>x.id===id);
+  u.nom = tr.querySelector('[data-uf="nom"]').value.trim();
+  u.profil = tr.querySelector('[data-uf="profil"]').value;
+  u.actif = tr.querySelector('[data-uf="actif"]').checked;
+  const nouveauMdp = tr.querySelector('[data-uf="motdepasse"]').value;
+  if(nouveauMdp){ u.motDePasseHash = await sha256Hex(nouveauMdp); }
+  saveConfigSilently();
+  alert("Utilisateur enregistré.");
+  render();
+}
+function deleteUser(id){
+  if(!confirm("Supprimer cet utilisateur ? Il ne pourra plus se connecter.")) return;
+  CONFIG.users = CONFIG.users.filter(u=>u.id!==id);
+  saveConfigSilently(); render();
+}
+function addUser(){
+  if(!CONFIG.users) CONFIG.users = [];
+  const id = "u_" + Date.now();
+  CONFIG.users.push({id, nom:"Nouvel utilisateur", profil:"Direction", actif:true, motDePasseHash:null});
+  saveConfigSilently(); render();
+}
+
+function telechargerModeleUtilisateurs(){
+  const donnees = [
+    {Nom:"KOUAME Jean", Profil:"Direction", Actif:"Oui"},
+    {Nom:"TRAORE Awa", Profil:"BMC", Actif:"Oui"},
+    {Nom:"YAO Paul", Profil:"Maintenance", Actif:"Oui"},
+    {Nom:"", Profil:"", Actif:""}
+  ];
+  const ws = XLSX.utils.json_to_sheet(donnees);
+  ws['!cols'] = [{wch:26},{wch:18},{wch:10}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Utilisateurs");
+
+  const wsAide = XLSX.utils.aoa_to_sheet([
+    ["Colonne","Contenu attendu"],
+    ["Nom","Nom complet de l'utilisateur (obligatoire)"],
+    ["Profil","Administrateur, BMC, Maintenance, Production, Magasin ou Direction"],
+    ["","Si absent ou non reconnu, le profil \"Direction\" sera appliqué par défaut"],
+    ["Actif","Oui (par défaut) ou Non — un compte inactif ne peut pas se connecter"]
+  ]);
+  wsAide['!cols'] = [{wch:14},{wch:60}];
+  XLSX.utils.book_append_sheet(wb, wsAide, "Aide");
+
+  XLSX.writeFile(wb, "Modele_Import_Utilisateurs_BMC.xlsx");
+}
+
+function importUsersExcel(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const validProfils = ["Administrateur","BMC","Maintenance","Production","Magasin","Direction"];
+  const reader = new FileReader();
+  reader.onload = e => {
+    try{
+      const wb = XLSX.read(e.target.result, {type:"array"});
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, {defval:""});
+      if(!rows.length){ alert("Le fichier ne contient aucune ligne exploitable."); return; }
+      if(!CONFIG.users) CONFIG.users = [];
+      let ajoutes = 0, maj = 0, ignores = 0;
+      rows.forEach(r => {
+        // tolère différentes casses/orthographes d'en-têtes
+        const keys = Object.keys(r).reduce((acc,k)=>{ acc[k.trim().toLowerCase()] = r[k]; return acc; }, {});
+        const nom = String(keys['nom'] || keys['name'] || '').trim();
+        if(!nom){ ignores++; return; }
+        let profil = String(keys['profil'] || keys['profile'] || '').trim();
+        profil = validProfils.find(p => p.toLowerCase() === profil.toLowerCase()) || "Direction";
+        const actifRaw = String(keys['actif'] || 'Oui').trim().toLowerCase();
+        const actif = !["non","0","false","no","inactif"].includes(actifRaw);
+        const existant = CONFIG.users.find(u => u.nom.toLowerCase() === nom.toLowerCase());
+        if(existant){
+          existant.profil = profil; existant.actif = actif; maj++;
+        } else {
+          CONFIG.users.push({id:"u_"+Date.now()+"_"+Math.random().toString(36).slice(2,6), nom, profil, actif, motDePasseHash:null});
+          ajoutes++;
+        }
+      });
+      saveConfigSilently();
+      render();
+      alert(`Import terminé : ${ajoutes} ajouté(s), ${maj} mis à jour, ${ignores} ligne(s) ignorée(s) (nom manquant).\n\nPensez à définir un mot de passe pour chaque nouvel utilisateur dans le tableau ci-dessus.`);
+    }catch(err){
+      alert("Impossible de lire ce fichier Excel. Vérifiez le format (.xlsx) et les colonnes.");
+      console.error(err);
+    }
+    evt.target.value = "";
+  };
+  reader.readAsArrayBuffer(file);
+}
+function adminRow(a){
+  const profils = ["Administrateur","BMC","Maintenance","Production","Magasin","Direction"];
+  return `<tr data-id="${a.id}">
+    <td><input value="${a.icone}" data-f="icone" style="width:44px;text-align:center;"></td>
+    <td><input value="${a.nom}" data-f="nom"></td>
+    <td><textarea data-f="desc" style="width:100%;min-width:180px;min-height:40px;padding:6px 8px;border:1px solid var(--line);border-radius:5px;background:var(--paper);color:var(--ink);font-size:12px;font-family:inherit;resize:vertical;">${a.desc}</textarea></td>
+    <td><input value="${a.categorie}" data-f="categorie"></td>
+    <td><select data-f="statut">${["Production","Test","Développement","Hors service"].map(s=>`<option ${s===a.statut?'selected':''}>${s}</option>`).join('')}</select></td>
+    <td><input value="${a.version}" data-f="version" style="width:50px;"></td>
+    <td><input value="${a.maj}" data-f="maj" style="width:80px;"></td>
+    <td><input value="${a.responsable}" data-f="responsable"></td>
+    <td><select data-f="type"><option ${a.type==='local'?'selected':''}>local</option><option ${a.type==='dossier'?'selected':''}>dossier</option><option ${a.type==='web'?'selected':''}>web</option><option ${a.type==='exe'?'selected':''}>exe</option></select></td>
+    <td><input value="${a.chemin}" data-f="chemin"></td>
+    <td style="font-size:10px;">${profils.map(p=>`<label style="display:block;"><input type="checkbox" data-profil="${p}" ${a.profils.includes(p)?'checked':''}> ${p}</label>`).join('')}</td>
+    <td style="text-align:center;"><input type="checkbox" data-f="epingle" ${a.epingle?'checked':''}></td>
+    <td><button class="mini-btn save" onclick="saveRow('${a.id}')">Enr.</button><button class="mini-btn del" onclick="deleteApp('${a.id}')">Suppr.</button></td>
+  </tr>`;
+}
+function saveRow(id){
+  const tr = document.querySelector(`tr[data-id="${id}"]`);
+  const a = CONFIG.apps.find(x=>x.id===id);
+  tr.querySelectorAll('[data-f]').forEach(el=>{
+    if(el.dataset.f === 'epingle'){ a.epingle = el.checked; }
+    else { a[el.dataset.f] = el.value; }
+  });
+  a.profils = Array.from(tr.querySelectorAll('[data-profil]')).filter(cb=>cb.checked).map(cb=>cb.dataset.profil);
+  saveConfigSilently();
+  alert("Application enregistrée.");
+  render();
+}
+function deleteApp(id){
+  if(!confirm("Supprimer cette application du catalogue ?")) return;
+  CONFIG.apps = CONFIG.apps.filter(a=>a.id!==id);
+  saveConfigSilently(); render();
+}
+function addApp(){
+  const id = "app_" + Date.now();
+  CONFIG.apps.push({id, nom:"Nouvelle application", desc:"Description à compléter.", categorie:"Divers", statut:"Développement",
+    version:"0.1", maj:new Date().toLocaleDateString('fr-FR'), responsable:currentUser.name, type:"local", chemin:"", icone:"📄", profils:["Administrateur"], epingle:false});
+  saveConfigSilently(); render();
+}
+
+/* ---------- NOTIFICATIONS ---------- */
+function renderNotifs(){
+  const list = document.getElementById('notifList');
+  if(!CONFIG.notifications.length){ list.innerHTML='<div class="notif-item">Aucune notification.</div>'; return; }
+  list.innerHTML = CONFIG.notifications.map(n=>`<div class="notif-item">${n.titre}<div class="t">${n.date}</div></div>`).join('');
+  document.getElementById('notifDot').style.display = CONFIG.notifications.length? 'block':'none';
+}
+
+/* ---------- PERSISTENCE : File System Access API ---------- */
+async function linkFolder(){
+  try{
+    const dirHandle = await window.showDirectoryPicker();
+    try{
+      FILE_HANDLE = await dirHandle.getFileHandle('config.json', {create:false});
+      const file = await FILE_HANDLE.getFile();
+      const text = await file.text();
+      CONFIG = normalizeConfig(JSON.parse(text));
+    }catch(e){
+      const creer = confirm("Aucun fichier config.json trouvé dans ce dossier.\n\nVérifiez que c'est bien le dossier réseau PARTAGÉ de l'équipe avant de continuer — sinon vous allez créer un portail vide, séparé de celui des autres utilisateurs, ce qui donne l'impression que les données ont disparu.\n\nCréer un nouveau fichier config.json ici ?");
+      if(!creer) return;
+      FILE_HANDLE = await dirHandle.getFileHandle('config.json', {create:true});
+      await writeConfigToHandle();
+    }
+    lastLoadedConfigSnapshot = snapshotOf(CONFIG);
+    cacheConfigLocally();
+    await idbSetHandle(FILE_HANDLE);
+    updateSyncStatusUI();
+    alert("Dossier lié. Le fichier config.json sera utilisé pour la persistance partagée et sera reproposé automatiquement au prochain démarrage.");
+    render();
+  }catch(e){ console.log("Liaison annulée ou non supportée", e); }
+}
+async function linkJsonFile(){
+  try{
+    if(!window.showOpenFilePicker){ alert("Ce navigateur ne prend pas en charge la liaison directe à un fichier. Utilisez « Lier un dossier réseau » ou « Importer un JSON »."); return; }
+    const [handle] = await window.showOpenFilePicker({
+      types: [{description:"Fichier JSON", accept:{"application/json":[".json"]}}],
+      multiple:false
+    });
+    FILE_HANDLE = handle;
+    const file = await FILE_HANDLE.getFile();
+    CONFIG = normalizeConfig(JSON.parse(await file.text()));
+    lastLoadedConfigSnapshot = snapshotOf(CONFIG);
+    cacheConfigLocally();
+    await idbSetHandle(FILE_HANDLE);
+    updateSyncStatusUI();
+    alert("Fichier JSON lié : " + file.name + ". Les modifications seront écrites directement dedans et le lien sera mémorisé au prochain démarrage.");
+    render();
+  }catch(e){ console.log("Liaison annulée ou non supportée", e); }
+}
+async function writeConfigToHandle(){
+  if(!FILE_HANDLE) return;
+  try{
+    // Vérifie qu'aucun autre utilisateur n'a modifié le fichier partagé entre-temps
+    if(lastLoadedConfigSnapshot !== null){
+      try{
+        const currentFile = await FILE_HANDLE.getFile();
+        const currentText = await currentFile.text();
+        const remoteCfg = normalizeConfig(JSON.parse(currentText));
+        if(snapshotOf(remoteCfg) !== lastLoadedConfigSnapshot){
+          const recharger = confirm("⚠ Le fichier partagé a été modifié par quelqu'un d'autre depuis votre dernière lecture.\n\nOK = recharger ses données maintenant (vos modifications en cours seront perdues, à refaire après rechargement).\nAnnuler = écraser ses modifications avec les vôtres (déconseillé, risque de perte de données pour l'autre utilisateur).");
+          if(recharger){
+            CONFIG = remoteCfg;
+            lastLoadedConfigSnapshot = snapshotOf(CONFIG);
+            cacheConfigLocally();
+            render();
+            return;
+          }
+        }
+      }catch(e){ console.log("Vérification de conflit impossible", e); }
+    }
+    const writable = await FILE_HANDLE.createWritable();
+    await writable.write(JSON.stringify(CONFIG, null, 2));
+    await writable.close();
+    lastLoadedConfigSnapshot = snapshotOf(CONFIG);
+  }catch(e){
+    console.log("Écriture impossible", e);
+    alert("La sauvegarde vers le fichier partagé a échoué. Vos modifications restent en mémoire et en cache local sur cet appareil, mais ne sont pas encore synchronisées. Vérifiez l'accès au dossier réseau puis réessayez.");
+  }
+}
+function saveConfigSilently(){
+  cacheConfigLocally();
+  if(FILE_HANDLE){ writeConfigToHandle(); }
+}
+function exportConfig(){
+  const blob = new Blob([JSON.stringify(CONFIG, null, 2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = "config_portail_bmc.json"; a.click();
+  URL.revokeObjectURL(url);
+}
+function importConfig(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e=>{
+    try{
+      CONFIG = normalizeConfig(JSON.parse(e.target.result));
+      lastLoadedConfigSnapshot = null; // import manuel : on ne peut pas garantir qu'il correspond au fichier lié
+      cacheConfigLocally();
+      alert("Configuration importée. Pensez à cliquer sur « Enregistrer » ou à relier le dossier partagé pour que ce changement soit bien synchronisé avec les autres utilisateurs.");
+      render();
+    }
+    catch(err){ alert("Fichier JSON invalide."); }
+  };
+  reader.readAsText(file);
+}
+
+document.getElementById('logoSolibraLogin').src = LOGO_SOLIBRA_B64;
+document.getElementById('logoSolibraSidebar').src = LOGO_SOLIBRA_B64;
+autoLoginFromSession(); // session manuelle (sans fichier lié) : reconnexion immédiate
+checkStoredHandleOnLoad().then(()=>autoLoginFromSession()); // session liée à un compte enregistré : reconnexion après chargement du fichier
+
+document.addEventListener('click', (e)=>{
+  const panel = document.getElementById('notifPanel');
+  if(panel.classList.contains('open') && !panel.contains(e.target) && e.target.textContent!=='🔔'){
+    panel.classList.remove('open');
+  }
+});
+</script>
+</body>
+</html>
